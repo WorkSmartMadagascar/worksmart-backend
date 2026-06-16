@@ -1,13 +1,16 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sqlite3
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# DB INIT
+DB_NAME = "database.db"
+
+# ---------------- INIT DB ----------------
 def init_db():
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
 
     c.execute("""
@@ -37,20 +40,25 @@ def init_db():
 
 init_db()
 
-# -------- EMPLOYES --------
+# ---------------- GET EMPLOYEES ----------------
 @app.route("/employees", methods=["GET"])
 def get_employees():
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM employees")
-    data = c.fetchall()
-    conn.close()
-    return jsonify(data)
 
+    c.execute("SELECT * FROM employees")
+    rows = c.fetchall()
+
+    conn.close()
+
+    return jsonify([dict(row) for row in rows])
+
+# ---------------- ADD EMPLOYEE ----------------
 @app.route("/employees", methods=["POST"])
 def add_employee():
     data = request.json
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
 
     try:
@@ -58,49 +66,63 @@ def add_employee():
         INSERT INTO employees (matricule, nom, adresse, section, fonction, statut, etat)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            data["matricule"],
-            data["nom"],
-            data["adresse"],
-            data["section"],
-            data["fonction"],
-            data["statut"],
-            data["etat"]
+            data.get("matricule"),
+            data.get("nom"),
+            data.get("adresse"),
+            data.get("section"),
+            data.get("fonction"),
+            data.get("statut"),
+            data.get("etat")
         ))
         conn.commit()
-    except:
+
+    except sqlite3.IntegrityError:
         return jsonify({"error": "Matricule déjà existant"}), 400
 
-    conn.close()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        conn.close()
+
     return jsonify({"message": "Ajouté avec succès"})
 
-# -------- PRESENCE --------
+# ---------------- PRESENCE ----------------
 @app.route("/presence", methods=["POST"])
 def add_presence():
     data = request.json
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
 
     c.execute("""
     INSERT INTO presence (matricule, shift, date)
     VALUES (?, ?, ?)
-    """, (data["matricule"], data["shift"], data["date"]))
+    """, (
+        data.get("matricule"),
+        data.get("shift"),
+        data.get("date")
+    ))
 
     conn.commit()
     conn.close()
 
     return jsonify({"message": "Présence ajoutée"})
 
+# ---------------- GET PRESENCE ----------------
 @app.route("/presence", methods=["GET"])
 def get_presence():
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
+
     c.execute("SELECT * FROM presence")
-    data = c.fetchall()
+    rows = c.fetchall()
+
     conn.close()
-    return jsonify(data)
 
-import os
+    return jsonify([dict(row) for row in rows])
 
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
